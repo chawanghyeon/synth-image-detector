@@ -1,0 +1,44 @@
+{
+ "openfake_test4/original": {
+  "n": 1167,
+  "auroc": 0.953,
+  "auroc_matched": 0.835,
+  "fpr": 0.0088,
+  "tpr": 0.6912
+ },
+ "openfake_test4/jpeg75": {
+  "n": 1167,
+  "auroc": 0.91,
+  "auroc_matched": 0.913,
+  "fpr": 0.007,
+  "tpr": 0.4641
+ },
+ "openfake_test4/sns": {
+  "n": 1167,
+  "auroc": 0.914,
+  "auroc_matched": 0.932,
+  "fpr": 0.007,
+  "tpr": 0.4875
+ },
+ "reddit3/original": {
+  "n": 1200,
+  "auroc": 0.951,
+  "auroc_matched": 0.903,
+  "fpr": 0.0117,
+  "tpr": 0.605
+ },
+ "reddit3/jpeg75": {
+  "n": 1200,
+  "auroc": 0.918,
+  "auroc_matched": 0.879,
+  "fpr": 0.0,
+  "tpr": 0.36
+ },
+ "reddit3/sns": {
+  "n": 1200,
+  "auroc": 0.861,
+  "auroc_matched": 0.878,
+  "fpr": 0.0367,
+  "tpr": 0.485
+ }
+}

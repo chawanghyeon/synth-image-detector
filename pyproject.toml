@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-train = ["huggingface-hub==0.36.0", "onnx==1.19.1", "pyarrow==21.0.0", "torch==2.8.0"]
+train = ["huggingface-hub==0.36.0", "onnx==1.19.1", "pyarrow==21.0.0", "torch==2.8.0", "transformers==4.57.3"]
 dev = ["httpx==0.28.1", "onnx==1.19.1", "pytest==8.4.2", "ruff==0.13.2"]
 
 [build-system]

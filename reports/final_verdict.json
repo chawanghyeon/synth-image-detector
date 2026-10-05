@@ -1,0 +1,132 @@
+{
+ "openfake_test3/original": {
+  "n": 1173,
+  "matched_n": 100,
+  "server": {
+   "matched": 0.896,
+   "all": 0.967
+  },
+  "semantic": {
+   "matched": 0.955,
+   "all": 0.909
+  },
+  "combined": {
+   "matched": 0.943,
+   "all": 0.955
+  }
+ },
+ "openfake_test3/jpeg75": {
+  "n": 1173,
+  "matched_n": 100,
+  "server": {
+   "matched": 0.942,
+   "all": 0.882
+  },
+  "semantic": {
+   "matched": 0.919,
+   "all": 0.871
+  },
+  "combined": {
+   "matched": 0.952,
+   "all": 0.907
+  }
+ },
+ "openfake_test3/half": {
+  "n": 803,
+  "matched_n": 78,
+  "server": {
+   "matched": 0.878,
+   "all": 0.758
+  },
+  "semantic": {
+   "matched": 0.967,
+   "all": 0.86
+  },
+  "combined": {
+   "matched": 0.95,
+   "all": 0.846
+  }
+ },
+ "openfake_test3/sns": {
+  "n": 1173,
+  "matched_n": 446,
+  "server": {
+   "matched": 0.853,
+   "all": 0.868
+  },
+  "semantic": {
+   "matched": 0.91,
+   "all": 0.901
+  },
+  "combined": {
+   "matched": 0.929,
+   "all": 0.914
+  }
+ },
+ "reddit2/original": {
+  "n": 1200,
+  "matched_n": 324,
+  "server": {
+   "matched": 0.852,
+   "all": 0.946
+  },
+  "semantic": {
+   "matched": 0.862,
+   "all": 0.865
+  },
+  "combined": {
+   "matched": 0.9,
+   "all": 0.954
+  }
+ },
+ "reddit2/jpeg75": {
+  "n": 1200,
+  "matched_n": 324,
+  "server": {
+   "matched": 0.819,
+   "all": 0.923
+  },
+  "semantic": {
+   "matched": 0.84,
+   "all": 0.818
+  },
+  "combined": {
+   "matched": 0.875,
+   "all": 0.923
+  }
+ },
+ "reddit2/half": {
+  "n": 1112,
+  "matched_n": 310,
+  "server": {
+   "matched": 0.771,
+   "all": 0.839
+  },
+  "semantic": {
+   "matched": 0.894,
+   "all": 0.877
+  },
+  "combined": {
+   "matched": 0.882,
+   "all": 0.901
+  }
+ },
+ "reddit2/sns": {
+  "n": 1200,
+  "matched_n": 452,
+  "server": {
+   "matched": 0.86,
+   "all": 0.858
+  },
+  "semantic": {
+   "matched": 0.863,
+   "all": 0.846
+  },
+  "combined": {
+   "matched": 0.905,
+   "all": 0.895
+  }
+ },
+ "PASS_semantic": false,
+ "PASS_combined": false
+}

@@ -74,3 +74,21 @@ def patches(image: Image.Image, limit: int = 32) -> np.ndarray:
         boxes = [boxes[i] for i in np.linspace(0, len(boxes) - 1, limit).astype(int)]
     batch = np.stack([array[r : r + PATCH, c : c + PATCH] for r, c in boxes])
     return np.ascontiguousarray(batch.transpose(0, 3, 1, 2))
+
+
+SEMANTIC = 224
+SEMANTIC_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+SEMANTIC_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+
+def semantic_crops(image: Image.Image) -> np.ndarray:
+    """Up to four native-resolution 224px crops around the centre, normalised, (N, 3, 224, 224)."""
+    a = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    h, w = a.shape[:2]
+    if h < SEMANTIC or w < SEMANTIC:
+        raise ValueError(f"Image must be at least {SEMANTIC}x{SEMANTIC} pixels")
+    s, cy, cx = SEMANTIC, h // 2, w // 2
+    ys = [max(0, cy - s), min(h - s, cy)] if h >= 2 * s else [(h - s) // 2]
+    xs = [max(0, cx - s), min(w - s, cx)] if w >= 2 * s else [(w - s) // 2]
+    crops = np.stack([a[y : y + s, x : x + s] for y in ys for x in xs]).astype(np.float32) / 255
+    return np.ascontiguousarray(((crops - SEMANTIC_MEAN) / SEMANTIC_STD).transpose(0, 3, 1, 2))
