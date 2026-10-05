@@ -205,6 +205,13 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+.bootstrap/
+.python/
+.venv/
+.uv-cache/
+/models/
+/data/
+__pycache__/
 
 # PyPI configuration file
 .pypirc
