@@ -7,14 +7,15 @@ same subset). teacher.npz holds, per training crop, the teacher's logit on the C
 used only for the threshold.
 
 Two students train at the same time, one per GPU, identical except for the target:
-  distill  loss = 0.5 * BCE(student(degraded), label) + 0.5 * BCE(student(degraded), sigmoid(teacher(clean)))
+  distill  loss = 0.5 * BCE(student(degraded), label)
+                + 0.5 * BCE(student(degraded), sigmoid(teacher(clean)))
   labels   loss = BCE(student(degraded), label)        (control: does the teacher add anything?)
 The student sees a degraded copy 75% of the time (random JPEG 50-95 or SNS chain), the original 25%.
 Its last 8 of 24 blocks, the attention pooling and a linear head are trained.
-Outputs in /kaggle/working: scores_<student>.npz (test logits per condition, held-aside real logits).
+Outputs in /kaggle/working: scores_<student>.npz (test logits per condition, held-aside real
+logits) and student_<student>.pt (trained weights).
 """
 
-import hashlib
 import io
 import random
 import threading
@@ -44,7 +45,9 @@ def augment(image, rng):
     if r < 0.6:
         return jpeg(image, rng.randint(50, 95))
     s = rng.uniform(0.5, 1.0)
-    image = image.resize((max(64, int(image.width * s)), max(64, int(image.height * s))), Image.BICUBIC)
+    image = image.resize(
+        (max(64, int(image.width * s)), max(64, int(image.height * s))), Image.BICUBIC
+    )
     return jpeg(image, rng.randint(60, 90))
 
 
@@ -79,7 +82,10 @@ def train(kind, gpu, model, head, trainable, files, labels, teacher, results):
     from PIL import Image
 
     device = f"cuda:{gpu}"
-    opt = torch.optim.AdamW([{"params": trainable, "lr": 2e-5}, {"params": head.parameters(), "lr": 1e-3}], weight_decay=0.05)
+    opt = torch.optim.AdamW(
+        [{"params": trainable, "lr": 2e-5}, {"params": head.parameters(), "lr": 1e-3}],
+        weight_decay=0.05,
+    )
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, [2e-5, 1e-3], total_steps=STEPS, pct_start=0.1)
     scaler = torch.amp.GradScaler()
     rng = random.Random(gpu)
@@ -102,7 +108,9 @@ def train(kind, gpu, model, head, trainable, files, labels, teacher, results):
             target = y[idx].to(device)
             loss = F.binary_cross_entropy_with_logits(logit, target)
             if kind == "distill":
-                loss = 0.5 * loss + 0.5 * F.binary_cross_entropy_with_logits(logit, soft[idx].to(device))
+                loss = 0.5 * loss + 0.5 * F.binary_cross_entropy_with_logits(
+                    logit, soft[idx].to(device)
+                )
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.step(opt)
@@ -121,7 +129,12 @@ def score(model, head, gpu, files, cond):
     out = []
     with torch.inference_mode():
         for a in range(0, len(files), 64):
-            x = torch.stack([to_tensor(factory.degrade(Image.open(f).convert("RGB"), cond, None), 336) for f in files[a : a + 64]])
+            x = torch.stack(
+                [
+                    to_tensor(factory.degrade(Image.open(f).convert("RGB"), cond, None), 336)
+                    for f in files[a : a + 64]
+                ]
+            )
             with torch.autocast("cuda", torch.float16):
                 out.append(head(model(x.to(f"cuda:{gpu}"))).squeeze(1).float().cpu().numpy())
     return np.concatenate(out)
@@ -148,9 +161,15 @@ def main():
         STEPS = 30
         test_rows = test_rows[:200]
     log(f"train {len(files)} crops, test {len(test_rows)}")
-    students = {"distill": (0, *student(0)), "labels": (1, *student(1))}  # load before threads start
+    students = {
+        "distill": (0, *student(0)),
+        "labels": (1, *student(1)),
+    }  # load before threads start
     results = {}
-    threads = [threading.Thread(target=train, args=(k, g, m, h, p, files, labels, teacher, results)) for k, (g, m, h, p) in students.items()]
+    threads = [
+        threading.Thread(target=train, args=(k, g, m, h, p, files, labels, teacher, results))
+        for k, (g, m, h, p) in students.items()
+    ]
     for th in threads:
         th.start()
     for th in threads:
@@ -164,8 +183,13 @@ def main():
         for cond in ("original", "jpeg75", "sns"):
             out[cond] = score(model, head, gpu, [m["file"] for m in test_rows], cond)
             log(f"{kind} scored test/{cond}")
-        np.savez(f"/kaggle/working/scores_{kind}.npz", **out, label=np.array([int(m["label"]) for m in test_rows]),
-                 source=np.array([m["source"] for m in test_rows]), model=np.array([m["model"] for m in test_rows]))
+        np.savez(
+            f"/kaggle/working/scores_{kind}.npz",
+            **out,
+            label=np.array([int(m["label"]) for m in test_rows]),
+            source=np.array([m["source"] for m in test_rows]),
+            model=np.array([m["model"] for m in test_rows]),
+        )
         torch_save(model, head, kind)
 
     threads = [threading.Thread(target=evaluate, args=(k,)) for k in results]
@@ -180,7 +204,13 @@ def torch_save(model, head, kind):
     """Trained weights of the student (blocks, pooling, head) for later export."""
     import torch
 
-    state = {k: v.half().cpu() for k, v in model.state_dict().items() if k.startswith(("blocks.16", "blocks.17", "blocks.18", "blocks.19", "blocks.2", "attn_pool", "norm"))}
+    state = {
+        k: v.half().cpu()
+        for k, v in model.state_dict().items()
+        if k.startswith(
+            ("blocks.16", "blocks.17", "blocks.18", "blocks.19", "blocks.2", "attn_pool", "norm")
+        )
+    }
     torch.save({"model": state, "head": head.state_dict()}, f"/kaggle/working/student_{kind}.pt")
 
 

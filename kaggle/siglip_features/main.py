@@ -33,10 +33,18 @@ PngImagePlugin.MAX_TEXT_CHUNK = 64 * 2**20  # tolerate large metadata when decod
 TMP = Path("/tmp/factory")
 OUT = Path("/kaggle/working")
 OPENFAKE_TRAIN = [
-    "train-00000-of-00032-00000", "train-00005-of-00032-00003", "train-00011-of-00032-00005",
-    "train-00016-of-00032-00007", "train-00022-of-00032-00010", "train-00027-of-00032-00012",
-    "train-00000-of-00032-00010", "train-00005-of-00032-00018", "train-00011-of-00032-00008",
-    "train-00016-of-00032-00017", "train-00022-of-00032-00006", "train-00027-of-00032-00016",
+    "train-00000-of-00032-00000",
+    "train-00005-of-00032-00003",
+    "train-00011-of-00032-00005",
+    "train-00016-of-00032-00007",
+    "train-00022-of-00032-00010",
+    "train-00027-of-00032-00012",
+    "train-00000-of-00032-00010",
+    "train-00005-of-00032-00018",
+    "train-00011-of-00032-00008",
+    "train-00016-of-00032-00017",
+    "train-00022-of-00032-00006",
+    "train-00027-of-00032-00016",
 ]
 TRAIN_CONDS = ["original", "jpeg", "sns"]
 TEST_CONDS = ["original", "jpeg75", "jpeg50", "half", "sns"]
@@ -45,7 +53,13 @@ SMOKE = False  # True: a few minutes end to end, to check the pipeline before a 
 #           (data/extra_crops), made on a laptop, so the GPU session only extracts features.
 # download: fetch and crop every source inside the job (slow: about 1 h of CPU work).
 MODE = "attached"
-ONLY = [("train", "original"), ("train", "sns"), ("test", "original"), ("test", "jpeg50"), ("test", "sns")]  # rerun just these jobs; None = all
+ONLY = [
+    ("train", "original"),
+    ("train", "sns"),
+    ("test", "original"),
+    ("test", "jpeg50"),
+    ("test", "sns"),
+]  # rerun just these jobs; None = all
 COMPARE = True  # run COMPARE_PLAN (other encoders) on a subset instead of the SigLIP2 job
 COMPARE_KEEP = {"train": 15000, "test": 6000}
 # GPU -> [(encoder, [(set, condition), ...])]; experiment 19 used train 2,500 / test 1,500 with
@@ -67,7 +81,7 @@ def log(msg):
 def crop(job):
     """(bytes, key, out_path) -> same deterministic crop as scripts/prepare_data.py."""
     data, key, out = job
-    from PIL import Image, ImageOps
+    from PIL import ImageOps
 
     try:
         with Image.open(io.BytesIO(data)) as raw:
@@ -103,21 +117,33 @@ def sources():
     def openfake(config, shard, set_name):
         def gen():
             n = 0
-            for rows in hf_parquet("ComplexDataLab/OpenFake", f"{config}/{shard}.parquet", ["image", "row_id", "label", "model"]):
-                yield [((r["image"]["bytes"], r["row_id"]), int(r["label"] == "fake"), r["model"]) for r in rows]
+            for rows in hf_parquet(
+                "ComplexDataLab/OpenFake",
+                f"{config}/{shard}.parquet",
+                ["image", "row_id", "label", "model"],
+            ):
+                yield [
+                    ((r["image"]["bytes"], r["row_id"]), int(r["label"] == "fake"), r["model"])
+                    for r in rows
+                ]
                 n += len(rows)
                 if limit and n >= limit:
                     return
+
         return (set_name, f"openfake_{config}", gen)
 
     def hf_images(repo, shard, set_name, source, take=None):
         def gen():
             n = 0
             for rows in hf_parquet(repo, shard, ["image"]):
-                yield [((r["image"]["bytes"], f"{source}/{shard}/{n + i}"), 0, source) for i, r in enumerate(rows)]
+                yield [
+                    ((r["image"]["bytes"], f"{source}/{shard}/{n + i}"), 0, source)
+                    for i, r in enumerate(rows)
+                ]
                 n += len(rows)
                 if (take and n >= take) or (limit and n >= limit):
                     return
+
         return (set_name, source, gen)
 
     def coco():
@@ -132,7 +158,9 @@ def sources():
         def gen():
             from huggingface_hub import hf_hub_download
 
-            path = hf_hub_download("pixparse/cc3m-wds", shard, repo_type="dataset", local_dir=TMP / "raw")
+            path = hf_hub_download(
+                "pixparse/cc3m-wds", shard, repo_type="dataset", local_dir=TMP / "raw"
+            )
             batch = []
             with tarfile.open(path) as tar:
                 for m in tar:
@@ -146,40 +174,60 @@ def sources():
             if batch:
                 yield batch
             Path(path).unlink()
+
         return (set_name, "cc3m", gen)
 
     out = [openfake("core", s, "train") for s in (OPENFAKE_TRAIN[:1] if SMOKE else OPENFAKE_TRAIN)]
     out += [("train", "coco", coco)]
-    out += [hf_images("huggan/wikiart", f"data/train-{i:05d}-of-00072.parquet", "train", "wikiart") for i in (0, 10, 20, 30, 40)]
-    out += [hf_images("axiong/imagenet-r", f"test/test-{i:05d}-of-00005.parquet", "train", "imagenet_r") for i in (0, 1)]
+    out += [
+        hf_images("huggan/wikiart", f"data/train-{i:05d}-of-00072.parquet", "train", "wikiart")
+        for i in (0, 10, 20, 30, 40)
+    ]
+    out += [
+        hf_images("axiong/imagenet-r", f"test/test-{i:05d}-of-00005.parquet", "train", "imagenet_r")
+        for i in (0, 1)
+    ]
     out += [cc3m(f"cc3m-train-{i:04d}.tar", "train") for i in (0, 1)]
     out += [openfake("core", "validation-00000-of-00015", "val")]
-    out += [openfake("core", "test-00000-of-00013", "test"), openfake("reddit", "test-00003-of-00005", "test")]
+    out += [
+        openfake("core", "test-00000-of-00013", "test"),
+        openfake("reddit", "test-00003-of-00005", "test"),
+    ]
     out += [cc3m(f"cc3m-validation-{i:04d}.tar", "test") for i in (0, 1, 2)]
-    out += [hf_images("huggan/wikiart", "data/train-00070-of-00072.parquet", "test", "wikiart"),
-            hf_images("axiong/imagenet-r", "test/test-00004-of-00005.parquet", "test", "imagenet_r", take=1500)]
+    out += [
+        hf_images("huggan/wikiart", "data/train-00070-of-00072.parquet", "test", "wikiart"),
+        hf_images(
+            "axiong/imagenet-r", "test/test-00004-of-00005.parquet", "test", "imagenet_r", take=1500
+        ),
+    ]
     return out
 
 
 def crop_roots():
-    """Where the crops are. They are uploaded as tar archives named *.bin so Kaggle keeps them packed
-    (it unpacks *.tar itself, into tens of thousands of files on a slow network mount); they are
-    extracted to local disk here. An unpacked layout (crops_train/train/...) also works.
+    """Where the crops are. They are uploaded as tar archives named *.bin so Kaggle keeps them
+    packed (it unpacks *.tar itself, into tens of thousands of files on a slow network mount); they
+    are extracted to local disk here. An unpacked layout (crops_train/train/...) also works.
     The dataset is a network mount where every file lookup is slow, so never walk it recursively:
     look only at the dataset folder and its direct subfolders."""
     import glob
 
     inputs = Path("/kaggle/input")
-    index = Path(next(p for d in range(1, 5) for p in glob.glob(str(inputs) + "/*" * d + "/index.csv")))
+    index = Path(
+        next(p for d in range(1, 5) for p in glob.glob(str(inputs) + "/*" * d + "/index.csv"))
+    )
     dataset = index.parent
     local = TMP / "unpacked"
-    for archive in sorted([*dataset.glob("*.tar"), *dataset.glob("*.bin")]):  # .bin: Kaggle leaves it packed
+    for archive in sorted(
+        [*dataset.glob("*.tar"), *dataset.glob("*.bin")]
+    ):  # .bin: Kaggle leaves it packed
         dest = local / ("crops" if archive.name.startswith("crops_") else "extra")
         dest.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive) as tar:
             tar.extractall(dest)
         log(f"unpacked {archive.name}")
-    candidates = [local / "crops", local / "extra", dataset] + sorted(p for p in dataset.iterdir() if p.is_dir())
+    candidates = [local / "crops", local / "extra", dataset] + sorted(
+        p for p in dataset.iterdir() if p.is_dir()
+    )
     log(f"crop folders: {[c.name for c in candidates]}")
 
     def root_of(rel):  # first folder that actually holds this file (folder names can repeat)
@@ -202,20 +250,46 @@ def from_datasets(keep=None):
     meta = []
     for r in csv.DictReader(index.open()):
         real_extra = r["model"] in ("coco", "flickr30k")
-        set_name = "train" if r["split"] == "train" or real_extra else {"validation": "val", "test": "test"}.get(r["split"])
+        set_name = (
+            "train"
+            if r["split"] == "train" or real_extra
+            else {"validation": "val", "test": "test"}.get(r["split"])
+        )
         if set_name:
             source = r["model"] if real_extra else "openfake_core"
-            meta.append({"set": set_name, "source": source, "label": r["label"], "model": r["model"], "file": where(r["file"])})
+            meta.append(
+                {
+                    "set": set_name,
+                    "source": source,
+                    "label": r["label"],
+                    "model": r["model"],
+                    "file": where(r["file"]),
+                }
+            )
     for r in csv.DictReader(extra_index.open()):
         half = int(hashlib.sha256(r["file"].encode()).hexdigest()[:8], 16) % 2
-        meta.append({"set": "train" if half == 0 else "test", "source": r["source"], "label": "0", "model": r["source"], "file": where(r["file"])})
+        meta.append(
+            {
+                "set": "train" if half == 0 else "test",
+                "source": r["source"],
+                "label": "0",
+                "model": r["source"],
+                "file": where(r["file"]),
+            }
+        )
     missing = sum(not Path(m["file"]).exists() for m in meta[:: max(1, len(meta) // 500)])
     if missing:
         raise RuntimeError(f"{missing} of ~500 sampled crop files are missing")
     keep = keep or ({"train": 6000, "val": 1000, "test": 4000} if QUICK else None)
     if keep:
         rng = random.Random(0)
-        meta = [m for s in keep for m in rng.sample([m for m in meta if m["set"] == s], min(keep[s], sum(x["set"] == s for x in meta)))]
+        meta = [
+            m
+            for s in keep
+            for m in rng.sample(
+                [m for m in meta if m["set"] == s], min(keep[s], sum(x["set"] == s for x in meta))
+            )
+        ]
     with (OUT / "meta.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, ["set", "source", "label", "model", "file"])
         w.writeheader()
@@ -238,7 +312,15 @@ def phase_a():
                     jobs.append((data, key, str(out)))
                 for ok, ((_, key), label, model), job in zip(pool.imap(crop, jobs, 8), batch, jobs):
                     if ok:
-                        meta.append({"set": set_name, "source": source, "label": label, "model": model, "file": job[2]})
+                        meta.append(
+                            {
+                                "set": set_name,
+                                "source": source,
+                                "label": label,
+                                "model": model,
+                                "file": job[2],
+                            }
+                        )
             log(f"{set_name}/{source}: {len(meta)} crops so far")
     keys = ["set", "source", "label", "model", "file"]
     with (OUT / "meta.csv").open("w", newline="") as f:
@@ -252,8 +334,6 @@ def phase_a():
 
 
 def degrade(image, cond, seed):
-    from PIL import Image
-
     rng = random.Random(seed)
 
     def jpeg(im, q):
@@ -267,7 +347,9 @@ def degrade(image, cond, seed):
         return jpeg(image, rng.randint(50, 95))
     if cond == "sns":
         s = rng.uniform(0.5, 1.0) if seed is not None else 0.75
-        image = image.resize((max(64, int(image.width * s)), max(64, int(image.height * s))), Image.BICUBIC)
+        image = image.resize(
+            (max(64, int(image.width * s)), max(64, int(image.height * s))), Image.BICUBIC
+        )
         return jpeg(image, rng.randint(60, 90) if seed is not None else 80)
     if cond.startswith("jpeg"):
         return jpeg(image, int(cond[4:]))
@@ -288,19 +370,26 @@ class Images:
 
     def __getitem__(self, i):
         import torch
-        from PIL import Image
 
         f = self.files[i]
-        seed = None if self.fixed else int(hashlib.sha256(f"{f}{self.cond}".encode()).hexdigest()[:8], 16)
+        seed = (
+            None
+            if self.fixed
+            else int(hashlib.sha256(f"{f}{self.cond}".encode()).hexdigest()[:8], 16)
+        )
         size = self.size or 384
         try:
             image = degrade(Image.open(f).convert("RGB"), self.cond, seed)
         except Exception as error:  # one unreadable file must not stop the run; it is flagged
             print(f"skip {f}: {error!r}", flush=True)
-            return (Image.new("RGB", (size, size)) if self.size is None else torch.zeros(3, size, size)), False
+            return (
+                Image.new("RGB", (size, size)) if self.size is None else torch.zeros(3, size, size)
+            ), False
         if self.size is None:
             return image, True
-        a = (np.asarray(image.resize((size, size), Image.BICUBIC), np.float32) / 255 - self.mean) / self.std
+        a = (
+            np.asarray(image.resize((size, size), Image.BICUBIC), np.float32) / 255 - self.mean
+        ) / self.std
         return torch.from_numpy(a.transpose(2, 0, 1)), True
 
 
@@ -321,7 +410,10 @@ class Encoder:
         elif name.startswith("pe_"):
             import timm
 
-            arch = {"pe_l": "vit_pe_core_large_patch14_336.fb", "pe_g": "vit_pe_core_gigantic_patch14_448.fb"}[name]
+            arch = {
+                "pe_l": "vit_pe_core_large_patch14_336.fb",
+                "pe_g": "vit_pe_core_gigantic_patch14_448.fb",
+            }[name]
             self.model = timm.create_model(arch, pretrained=True, num_classes=0)
             cfg = timm.data.resolve_model_data_config(self.model)
             self.size, self.mean, self.std = cfg["input_size"][-1], cfg["mean"], cfg["std"]
@@ -329,23 +421,38 @@ class Encoder:
         elif name == "embgemma2":  # retrieval embedding only, through sentence-transformers
             from sentence_transformers import SentenceTransformer
 
-            self.model, self.size = SentenceTransformer("google/embeddinggemma-2", device=self.device), None
+            self.model, self.size = (
+                SentenceTransformer("google/embeddinggemma-2", device=self.device),
+                None,
+            )
             return
         else:
             raise ValueError(name)
         for i in (len(blocks) // 2 - 1, len(blocks) - 1):
-            blocks[i].register_forward_hook(lambda m, a, o, i=i: self.captured.__setitem__(i, o[0] if isinstance(o, tuple) else o))
+            blocks[i].register_forward_hook(
+                lambda m, a, o, i=i: self.captured.__setitem__(
+                    i, o[0] if isinstance(o, tuple) else o
+                )
+            )
         self.model = self.model.half().eval().to(self.device)
         self.torch = torch
 
     def __call__(self, x):
         if self.size is None:
-            return np.asarray(self.model.encode(x, batch_size=len(x), convert_to_numpy=True), np.float32)
+            return np.asarray(
+                self.model.encode(x, batch_size=len(x), convert_to_numpy=True), np.float32
+            )
         torch = self.torch
-        out = self.model(pixel_values=x.to(self.device).half()) if self.name == "siglip2" else self.model(x.to(self.device).half())
+        out = (
+            self.model(pixel_values=x.to(self.device).half())
+            if self.name == "siglip2"
+            else self.model(x.to(self.device).half())
+        )
         pooled = (out.pooler_output if self.name == "siglip2" else out).float()
         mid, last = (self.captured[k].float() for k in sorted(self.captured))
-        return torch.cat([mid.mean(1), mid.std(1), last.mean(1), last.std(1), pooled], 1).cpu().numpy()
+        return (
+            torch.cat([mid.mean(1), mid.std(1), last.mean(1), last.std(1), pooled], 1).cpu().numpy()
+        )
 
 
 def load_vision(gpu):
@@ -362,13 +469,21 @@ def batches(dataset, size=32, threads=3):
 
     starts = range(0, len(dataset), size)
     with ThreadPoolExecutor(threads) as pool:
-        submit = lambda a: [pool.submit(dataset.__getitem__, i) for i in range(a, min(a + size, len(dataset)))]
+
+        def submit(a):
+            return [
+                pool.submit(dataset.__getitem__, i) for i in range(a, min(a + size, len(dataset)))
+            ]
+
         pending = submit(0)
         for a in starts:
             ready = [f.result() for f in pending]
             pending = submit(a + size) if a + size < len(dataset) else []
             images = [x for x, _ in ready]
-            yield (torch.stack(images) if torch.is_tensor(images[0]) else images), torch.tensor([ok for _, ok in ready])
+            yield (
+                (torch.stack(images) if torch.is_tensor(images[0]) else images),
+                torch.tensor([ok for _, ok in ready]),
+            )
 
 
 def phase_b(encoder, jobs):
@@ -383,12 +498,17 @@ def phase_b(encoder, jobs):
         files = [m["file"] for m in meta if m["set"] == set_name]
         out, ok, begin = [], [], time.time()
         with torch.inference_mode():
-            for x, good in batches(Images(files, cond, set_name != "train", encoder.size, encoder.mean, encoder.std)):
+            for x, good in batches(
+                Images(files, cond, set_name != "train", encoder.size, encoder.mean, encoder.std)
+            ):
                 ok.append(good.numpy())
                 out.append(encoder(x).astype(np.float16))
         np.save(OUT / "feats" / f"{prefix}{set_name}__{cond}.npy", np.concatenate(out))
         np.save(OUT / "feats" / f"{prefix}{set_name}__{cond}__ok.npy", np.concatenate(ok))
-        log(f"{encoder.device} {encoder.name} {set_name}/{cond}: {len(files)} images {time.time() - begin:.0f}s")
+        log(
+            f"{encoder.device} {encoder.name} {set_name}/{cond}: "
+            f"{len(files)} images {time.time() - begin:.0f}s"
+        )
 
 
 def compare():
@@ -398,7 +518,10 @@ def compare():
     import sys
     import threading
 
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-U", "timm", "sentence-transformers"], check=False)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "-U", "timm", "sentence-transformers"],
+        check=False,
+    )
     from_datasets(keep=COMPARE_KEEP)
     encoders = {}
     for g, items in COMPARE_PLAN.items():
@@ -432,7 +555,11 @@ def main():
         return
 
     from_datasets() if MODE == "attached" else phase_a()
-    jobs = [("train", c) for c in TRAIN_CONDS] + [("val", "original")] + [("test", c) for c in TEST_CONDS]
+    jobs = (
+        [("train", c) for c in TRAIN_CONDS]
+        + [("val", "original")]
+        + [("test", c) for c in TEST_CONDS]
+    )
     jobs = [j for j in jobs if ONLY is None or j in ONLY]
     # One thread per GPU (Kaggle runs scripts as notebooks, so no re-executable __file__).
     # Load both models before any worker forks: a fork during a Hugging Face download (file lock

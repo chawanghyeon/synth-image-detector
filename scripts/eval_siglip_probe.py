@@ -28,7 +28,9 @@ def load(set_name, cond):
 
 def readable(set_name, conds):
     """Rows whose image was read under every condition (the job flags unreadable files)."""
-    masks = [np.load(p) for c in conds if (p := ROOT / "feats" / f"{set_name}__{c}__ok.npy").exists()]
+    masks = [
+        np.load(p) for c in conds if (p := ROOT / "feats" / f"{set_name}__{c}__ok.npy").exists()
+    ]
     return np.logical_and.reduce(masks) if masks else None
 
 
@@ -56,8 +58,13 @@ def main():
         yy = np.tile(y[fit], len(conds))
         sc = StandardScaler().fit(train["original"][fit])
         w = np.where(yy == 1, 0.5 / yy.sum(), 0.5 / (len(yy) - yy.sum()))
-        clf = LogisticRegression(C=0.1, max_iter=5000).fit(sc.transform(x), yy, sample_weight=w / w.mean())
-        score = lambda a: clf.decision_function(sc.transform(a))
+        clf = LogisticRegression(C=0.1, max_iter=5000).fit(
+            sc.transform(x), yy, sample_weight=w / w.mean()
+        )
+
+        def score(a, clf=clf, sc=sc):
+            return clf.decision_function(sc.transform(a))
+
         thr = float(np.quantile(score(train["original"][cal]), 0.99))
         res = {}
         for cond in TEST_CONDS:
@@ -70,15 +77,31 @@ def main():
                 if len(fakes):
                     entry["tpr"] = round(float((fakes > thr).mean()), 4)
                     entry["n_fake"] = int(len(fakes))
-                    entry["auroc"] = round(float(roc_auc_score(np.r_[np.zeros(len(reals)), np.ones(len(fakes))], np.r_[reals, fakes])), 4)
+                    entry["auroc"] = round(
+                        float(
+                            roc_auc_score(
+                                np.r_[np.zeros(len(reals)), np.ones(len(fakes))],
+                                np.r_[reals, fakes],
+                            )
+                        ),
+                        4,
+                    )
                 r[source] = entry
             if cond == "original":
                 by = defaultdict(list)
                 for i in np.flatnonzero((t_label == 1) & (t_source == "openfake_core")):
                     by[str(t_model[i])].append(s[i] > thr)
-                r["openfake_tpr_by_generator"] = {k: [round(float(np.mean(v)), 3), len(v)] for k, v in sorted(by.items(), key=lambda kv: -len(kv[1]))}
+                r["openfake_tpr_by_generator"] = {
+                    k: [round(float(np.mean(v)), 3), len(v)]
+                    for k, v in sorted(by.items(), key=lambda kv: -len(kv[1]))
+                }
             res[cond] = r
-            print(probe, cond, {k: v for k, v in r.items() if k != "openfake_tpr_by_generator"}, flush=True)
+            print(
+                probe,
+                cond,
+                {k: v for k, v in r.items() if k != "openfake_tpr_by_generator"},
+                flush=True,
+            )
         report["probes"][probe] = res
     Path("reports").mkdir(exist_ok=True)
     Path("reports/siglip_probe.json").write_text(json.dumps(report, indent=2) + "\n")
