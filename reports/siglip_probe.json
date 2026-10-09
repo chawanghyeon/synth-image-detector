@@ -1,0 +1,384 @@
+{
+  "n_train_fit": 30093,
+  "n_cal": 4610,
+  "probes": {
+    "original": {
+      "original": {
+        "cc3m": {
+          "fpr": 0.0047,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0022,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0106,
+          "n_real": 3406,
+          "tpr": 0.8866,
+          "n_fake": 3466,
+          "auroc": 0.9935
+        },
+        "wikiart": {
+          "fpr": 0.0019,
+          "n_real": 537
+        },
+        "openfake_tpr_by_generator": {
+          "z-image-turbo": [
+            0.939,
+            998
+          ],
+          "flux.2-klein-9b": [
+            0.756,
+            636
+          ],
+          "illustrious": [
+            0.985,
+            464
+          ],
+          "gpt-image-1.5": [
+            0.857,
+            434
+          ],
+          "midjourney-7": [
+            0.957,
+            254
+          ],
+          "veo-3": [
+            0.905,
+            158
+          ],
+          "wan-video-2.5": [
+            1.0,
+            96
+          ],
+          "recraft-v3": [
+            0.556,
+            72
+          ],
+          "ernie-image-turbo": [
+            0.983,
+            60
+          ],
+          "sora-2": [
+            0.854,
+            41
+          ],
+          "gpt-image-2": [
+            0.561,
+            41
+          ],
+          "seedream-v5.0": [
+            0.727,
+            33
+          ],
+          "lumina-17-2-25": [
+            0.969,
+            32
+          ],
+          "ernie-image": [
+            0.968,
+            31
+          ],
+          "frames-23-1-25": [
+            0.682,
+            22
+          ],
+          "aurora-20-1-25": [
+            0.955,
+            22
+          ],
+          "recraft-v2": [
+            0.95,
+            20
+          ],
+          "ideogram-2.0": [
+            0.842,
+            19
+          ],
+          "nano-banana-pro": [
+            0.947,
+            19
+          ],
+          "halfmoon-4-4-25": [
+            0.929,
+            14
+          ]
+        }
+      },
+      "jpeg75": {
+        "cc3m": {
+          "fpr": 0.0008,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0022,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0141,
+          "n_real": 3406,
+          "tpr": 0.7034,
+          "n_fake": 3466,
+          "auroc": 0.9759
+        },
+        "wikiart": {
+          "fpr": 0.0317,
+          "n_real": 537
+        }
+      },
+      "jpeg50": {
+        "cc3m": {
+          "fpr": 0.0,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0038,
+          "n_real": 3406,
+          "tpr": 0.541,
+          "n_fake": 3466,
+          "auroc": 0.9705
+        },
+        "wikiart": {
+          "fpr": 0.0149,
+          "n_real": 537
+        }
+      },
+      "half": {
+        "cc3m": {
+          "fpr": 0.0071,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0067,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0182,
+          "n_real": 3406,
+          "tpr": 0.8044,
+          "n_fake": 3466,
+          "auroc": 0.9755
+        },
+        "wikiart": {
+          "fpr": 0.0074,
+          "n_real": 537
+        }
+      },
+      "sns": {
+        "cc3m": {
+          "fpr": 0.0,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0018,
+          "n_real": 3406,
+          "tpr": 0.4204,
+          "n_fake": 3466,
+          "auroc": 0.948
+        },
+        "wikiart": {
+          "fpr": 0.0019,
+          "n_real": 537
+        }
+      }
+    },
+    "augmented": {
+      "original": {
+        "cc3m": {
+          "fpr": 0.0024,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0067,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0123,
+          "n_real": 3406,
+          "tpr": 0.8113,
+          "n_fake": 3466,
+          "auroc": 0.9832
+        },
+        "wikiart": {
+          "fpr": 0.0037,
+          "n_real": 537
+        },
+        "openfake_tpr_by_generator": {
+          "z-image-turbo": [
+            0.858,
+            998
+          ],
+          "flux.2-klein-9b": [
+            0.629,
+            636
+          ],
+          "illustrious": [
+            0.978,
+            464
+          ],
+          "gpt-image-1.5": [
+            0.793,
+            434
+          ],
+          "midjourney-7": [
+            0.862,
+            254
+          ],
+          "veo-3": [
+            0.842,
+            158
+          ],
+          "wan-video-2.5": [
+            0.948,
+            96
+          ],
+          "recraft-v3": [
+            0.389,
+            72
+          ],
+          "ernie-image-turbo": [
+            0.883,
+            60
+          ],
+          "sora-2": [
+            0.854,
+            41
+          ],
+          "gpt-image-2": [
+            0.585,
+            41
+          ],
+          "seedream-v5.0": [
+            0.879,
+            33
+          ],
+          "lumina-17-2-25": [
+            0.906,
+            32
+          ],
+          "ernie-image": [
+            0.903,
+            31
+          ],
+          "frames-23-1-25": [
+            0.545,
+            22
+          ],
+          "aurora-20-1-25": [
+            0.818,
+            22
+          ],
+          "recraft-v2": [
+            0.75,
+            20
+          ],
+          "ideogram-2.0": [
+            0.789,
+            19
+          ],
+          "nano-banana-pro": [
+            0.895,
+            19
+          ],
+          "halfmoon-4-4-25": [
+            0.857,
+            14
+          ]
+        }
+      },
+      "jpeg75": {
+        "cc3m": {
+          "fpr": 0.0016,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0045,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0085,
+          "n_real": 3406,
+          "tpr": 0.7666,
+          "n_fake": 3466,
+          "auroc": 0.9806
+        },
+        "wikiart": {
+          "fpr": 0.0093,
+          "n_real": 537
+        }
+      },
+      "jpeg50": {
+        "cc3m": {
+          "fpr": 0.0016,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.009,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0082,
+          "n_real": 3406,
+          "tpr": 0.7392,
+          "n_fake": 3466,
+          "auroc": 0.9772
+        },
+        "wikiart": {
+          "fpr": 0.013,
+          "n_real": 537
+        }
+      },
+      "half": {
+        "cc3m": {
+          "fpr": 0.0032,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.0045,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0308,
+          "n_real": 3406,
+          "tpr": 0.7657,
+          "n_fake": 3466,
+          "auroc": 0.9633
+        },
+        "wikiart": {
+          "fpr": 0.0112,
+          "n_real": 537
+        }
+      },
+      "sns": {
+        "cc3m": {
+          "fpr": 0.0024,
+          "n_real": 1266
+        },
+        "imagenet_r": {
+          "fpr": 0.009,
+          "n_real": 446
+        },
+        "openfake_core": {
+          "fpr": 0.0182,
+          "n_real": 3406,
+          "tpr": 0.7452,
+          "n_fake": 3466,
+          "auroc": 0.9678
+        },
+        "wikiart": {
+          "fpr": 0.0074,
+          "n_real": 537
+        }
+      }
+    }
+  }
+}
