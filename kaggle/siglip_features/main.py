@@ -110,8 +110,15 @@ def hf_parquet(repo, name, columns):
     Path(path).unlink()
 
 
-def sources():
-    """Yields (set, source, label, model, batches of (bytes, key))."""
+def sources(part=None):
+    """(set, source, generator of batches of ((bytes, key), label, model)).
+    part None: the original SigLIP2 run. Data-factory parts (kaggle/data_factory):
+      train_a  OpenFake core train shards (12)
+      train_b  COCO val2017, WikiArt (5 shards), ImageNet-R (2 shards), CC3M train (2 shards)
+      train_c  OpenFake Reddit shards 0-2 (images posted online; shards 3-4 stay in eval)
+      eval     sealed test sets: OpenFake core test shards 1-2, Reddit shards 3-4, and hard reals
+               (CC3M validation 0-2, WikiArt shard 70, ImageNet-R shard 4) -- none used in training
+    """
     limit = 200 if SMOKE else None
 
     def openfake(config, shard, set_name):
@@ -177,8 +184,37 @@ def sources():
 
         return (set_name, "cc3m", gen)
 
-    out = [openfake("core", s, "train") for s in (OPENFAKE_TRAIN[:1] if SMOKE else OPENFAKE_TRAIN)]
-    out += [("train", "coco", coco)]
+    train_a = [
+        openfake("core", s, "train") for s in (OPENFAKE_TRAIN[:1] if SMOKE else OPENFAKE_TRAIN)
+    ]
+    train_b = [("train", "coco", coco)]
+    train_b += [
+        hf_images("huggan/wikiart", f"data/train-{i:05d}-of-00072.parquet", "train", "wikiart")
+        for i in (0, 10, 20, 30, 40)
+    ]
+    train_b += [
+        hf_images("axiong/imagenet-r", f"test/test-{i:05d}-of-00005.parquet", "train", "imagenet_r")
+        for i in (0, 1)
+    ]
+    train_b += [cc3m(f"cc3m-train-{i:04d}.tar", "train") for i in (0, 1)]
+    hard = [cc3m(f"cc3m-validation-{i:04d}.tar", "hard_real") for i in (0, 1, 2)]
+    hard += [
+        hf_images("huggan/wikiart", "data/train-00070-of-00072.parquet", "hard_real", "wikiart"),
+        hf_images(
+            "axiong/imagenet-r", "test/test-00004-of-00005.parquet", "hard_real", "imagenet_r"
+        ),
+    ]
+    sealed = [
+        openfake("core", "test-00001-of-00013", "core_test1"),
+        openfake("core", "test-00002-of-00013", "core_test2"),
+        openfake("reddit", "test-00003-of-00005", "reddit3"),
+        openfake("reddit", "test-00004-of-00005", "reddit4"),
+    ]
+    train_c = [openfake("reddit", f"test-{i:05d}-of-00005", "train") for i in (0, 1, 2)]
+    if part:
+        parts = {"train_a": train_a, "train_b": train_b, "train_c": train_c, "eval": sealed + hard}
+        return parts[part]
+    out = list(train_a) + [("train", "coco", coco)]
     out += [
         hf_images("huggan/wikiart", f"data/train-{i:05d}-of-00072.parquet", "train", "wikiart")
         for i in (0, 10, 20, 30, 40)
@@ -298,11 +334,11 @@ def from_datasets(keep=None):
     return meta
 
 
-def phase_a():
+def phase_a(selected=None):
     TMP.mkdir(parents=True, exist_ok=True)
     meta = []
     with Pool(4) as pool:
-        for set_name, source, gen in sources():
+        for set_name, source, gen in selected or sources():
             folder = TMP / "crops" / set_name
             folder.mkdir(parents=True, exist_ok=True)
             for batch in gen():

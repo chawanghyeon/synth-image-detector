@@ -1,0 +1,20 @@
+{
+  "id": "chawanghyeon/train-v2",
+  "title": "train-v2",
+  "code_file": "main.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [
+    "chawanghyeon/synth-student-v1"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [
+    "chawanghyeon/data-factory-train-a",
+    "chawanghyeon/data-factory-train-b",
+    "chawanghyeon/data-factory-train-c",
+    "chawanghyeon/data-factory-eval"
+  ]
+}

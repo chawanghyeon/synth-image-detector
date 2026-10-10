@@ -6,12 +6,17 @@ same subset). teacher.npz holds, per training crop, the teacher's logit on the C
 (cross-fitted: 5 folds, so no crop is scored by a probe that saw it) and the 20% held-aside reals
 used only for the threshold.
 
-Two students train at the same time, one per GPU, identical except for the target:
+RUNS trains one model per GPU at the same time. Targets:
   distill  loss = 0.5 * BCE(student(degraded), label)
                 + 0.5 * BCE(student(degraded), sigmoid(teacher(clean)))
-  labels   loss = BCE(student(degraded), label)        (control: does the teacher add anything?)
-The student sees a degraded copy 75% of the time (random JPEG 50-95 or SNS chain), the original 25%.
-Its last 8 of 24 blocks, the attention pooling and a linear head are trained.
+  labels   loss = BCE(student(degraded), label)
+The model sees a degraded copy 75% of the time (random JPEG 50-95 or SNS chain), the original 25%.
+Its last `blocks` blocks ("all" = full fine-tuning), the attention pooling, the final norm and a
+linear head are trained; the frozen part runs in fp16 so that PE-Core-G fits a 16 GB T4. `accum`
+micro-batches are accumulated per optimizer step (PE-Core-G at 448 px: 8 images per micro-batch).
+Experiment 23: PE-Core-L (8 blocks, 336 px), distill vs labels, 1,500 steps of 32.
+Experiment 25: PE-Core-G (last 6 blocks, 448 px) vs PE-Core-L fully fine-tuned (336 px), labels,
+test limited to 3,000.
 Outputs in /kaggle/working: scores_<student>.npz (test logits per condition, held-aside real
 logits) and student_<student>.pt (trained weights).
 """
@@ -23,7 +28,21 @@ import time
 
 import numpy as np
 
-STEPS = 1500  # x 32 images = 4 epochs over the ~12,000 training crops (about 1 h on a T4)
+PE_L, PE_G = "vit_pe_core_large_patch14_336.fb", "vit_pe_core_gigantic_patch14_448.fb"
+RUNS = [  # one per GPU
+    dict(name="peg448", arch=PE_G, size=448, blocks=6, kind="labels", steps=800, batch=8, accum=3),
+    dict(
+        name="pel_full",
+        arch=PE_L,
+        size=336,
+        blocks="all",
+        kind="labels",
+        steps=1500,
+        batch=32,
+        accum=1,
+    ),
+]
+TEST_LIMIT = 3000  # None = all 6,000 test crops
 SMOKE = False
 
 
@@ -59,80 +78,88 @@ def to_tensor(image, size):
     return torch.from_numpy(a.transpose(2, 0, 1))
 
 
-def student(gpu):
+def build(run, gpu):
     import timm
     import torch
 
-    model = timm.create_model("vit_pe_core_large_patch14_336.fb", pretrained=True, num_classes=0)
+    model = timm.create_model(run["arch"], pretrained=True, num_classes=0, img_size=run["size"])
+    model = model.half()
+    model.set_grad_checkpointing(True)
     for p in model.parameters():
         p.requires_grad = False
-    trainable = list(model.blocks[-8:].parameters())
-    for name in ("attn_pool", "norm"):
-        if hasattr(model, name) and isinstance(getattr(model, name), torch.nn.Module):
-            trainable += list(getattr(model, name).parameters())
-    for p in trainable:
-        p.requires_grad = True
+    blocks = model.blocks if run["blocks"] == "all" else model.blocks[-run["blocks"] :]
+    trainable = [blocks, model.attn_pool, model.norm]
+    if run["blocks"] == "all":
+        trainable += [model.patch_embed]
+    for module in trainable:
+        module.float()
+        for p in module.parameters():
+            p.requires_grad = True
     head = torch.nn.Linear(model.num_features, 1)
-    return model.to(f"cuda:{gpu}"), head.to(f"cuda:{gpu}"), trainable
+    return model.to(f"cuda:{gpu}"), head.to(f"cuda:{gpu}")
 
 
-def train(kind, gpu, model, head, trainable, files, labels, teacher, results):
+def train(run, gpu, model, head, files, labels, teacher, results):
     import torch
     import torch.nn.functional as F
     from PIL import Image
 
-    device = f"cuda:{gpu}"
+    device, steps, half, accum = f"cuda:{gpu}", run["steps"], run["batch"] // 2, run["accum"]
+    trainable = [p for p in model.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(
         [{"params": trainable, "lr": 2e-5}, {"params": head.parameters(), "lr": 1e-3}],
         weight_decay=0.05,
     )
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, [2e-5, 1e-3], total_steps=STEPS, pct_start=0.1)
+    lr = 1e-5 if run["blocks"] == "all" else 2e-5
+    for group, value in zip(opt.param_groups, (lr, 1e-3)):
+        group["lr"] = value
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, [lr, 1e-3], total_steps=steps, pct_start=0.1)
     scaler = torch.amp.GradScaler()
     rng = random.Random(gpu)
     soft = torch.sigmoid(torch.from_numpy(teacher))
     y = torch.from_numpy(labels.astype(np.float32))
-    pos, neg = np.flatnonzero(labels == 1), np.flatnonzero(labels == 0)
+    pos, neg = list(np.flatnonzero(labels == 1)), list(np.flatnonzero(labels == 0))
     from concurrent.futures import ThreadPoolExecutor
 
     def load(i):
-        return to_tensor(augment(Image.open(files[i]).convert("RGB"), rng), 336)
+        return to_tensor(augment(Image.open(files[i]).convert("RGB"), rng), run["size"])
 
     model.train()
     begin = time.time()
     with ThreadPoolExecutor(3) as pool:
-        for step in range(STEPS):
-            idx = np.r_[rng.sample(list(pos), 16), rng.sample(list(neg), 16)]  # balanced batch
-            x = torch.stack(list(pool.map(load, idx))).to(device)
-            with torch.autocast("cuda", torch.float16):
-                logit = head(model(x)).squeeze(1).float()
-            target = y[idx].to(device)
-            loss = F.binary_cross_entropy_with_logits(logit, target)
-            if kind == "distill":
-                loss = 0.5 * loss + 0.5 * F.binary_cross_entropy_with_logits(
-                    logit, soft[idx].to(device)
-                )
+        for step in range(steps):
             opt.zero_grad(set_to_none=True)
-            scaler.scale(loss).backward()
+            for _ in range(accum):
+                idx = np.r_[rng.sample(pos, half), rng.sample(neg, half)]  # balanced batch
+                x = torch.stack(list(pool.map(load, idx))).to(device)
+                with torch.autocast("cuda", torch.float16):
+                    logit = head(model(x)).squeeze(1).float()
+                loss = F.binary_cross_entropy_with_logits(logit, y[idx].to(device))
+                if run["kind"] == "distill":
+                    loss = 0.5 * loss + 0.5 * F.binary_cross_entropy_with_logits(
+                        logit, soft[idx].to(device)
+                    )
+                scaler.scale(loss / accum).backward()
             scaler.step(opt)
             scaler.update()
             sched.step()
-            if step % 200 == 0:
-                log(f"{kind} step {step} loss {loss.item():.4f} {time.time() - begin:.0f}s")
-    results[kind] = (model.eval(), head.eval())
+            if step % 100 == 0:
+                log(f"{run['name']} step {step} loss {loss.item():.4f} {time.time() - begin:.0f}s")
+    results[run["name"]] = (model.eval(), head.eval())
 
 
-def score(model, head, gpu, files, cond):
+def score(model, head, gpu, files, cond, size):
     import factory
     import torch
     from PIL import Image
 
     out = []
     with torch.inference_mode():
-        for a in range(0, len(files), 64):
+        for a in range(0, len(files), 32):
             x = torch.stack(
                 [
-                    to_tensor(factory.degrade(Image.open(f).convert("RGB"), cond, None), 336)
-                    for f in files[a : a + 64]
+                    to_tensor(factory.degrade(Image.open(f).convert("RGB"), cond, None), size)
+                    for f in files[a : a + 32]
                 ]
             )
             with torch.autocast("cuda", torch.float16):
@@ -156,19 +183,20 @@ def main():
     fit = ~t["cal"]
     files = [m["file"] for m, f in zip(train_rows, fit) if f]
     labels, teacher = t["label"][fit], np.clip(t["logit"][fit], -15, 15).astype(np.float32)
-    global STEPS
+    if TEST_LIMIT:
+        test_rows = test_rows[:TEST_LIMIT]
     if SMOKE:
-        STEPS = 30
-        test_rows = test_rows[:200]
+        for run in RUNS:
+            run["steps"] = 20
+        test_rows = test_rows[:100]
     log(f"train {len(files)} crops, test {len(test_rows)}")
-    students = {
-        "distill": (0, *student(0)),
-        "labels": (1, *student(1)),
-    }  # load before threads start
+    models = {
+        run["name"]: (gpu, *build(run, gpu)) for gpu, run in enumerate(RUNS)
+    }  # before threads
     results = {}
     threads = [
-        threading.Thread(target=train, args=(k, g, m, h, p, files, labels, teacher, results))
-        for k, (g, m, h, p) in students.items()
+        threading.Thread(target=train, args=(run, g, m, h, files, labels, teacher, results))
+        for run, (g, m, h) in zip(RUNS, models.values())
     ]
     for th in threads:
         th.start()
@@ -176,23 +204,25 @@ def main():
         th.join()
     cal_files = [m["file"] for m, c in zip(train_rows, t["cal"]) if c]
 
-    def evaluate(kind):
-        model, head = results[kind]
-        gpu = students[kind][0]
-        out = {"cal_original": score(model, head, gpu, cal_files, "original")}
+    def evaluate(run):
+        model, head = results[run["name"]]
+        gpu, size = models[run["name"]][0], run["size"]
+        out = {"cal_original": score(model, head, gpu, cal_files, "original", size)}
         for cond in ("original", "jpeg75", "sns"):
-            out[cond] = score(model, head, gpu, [m["file"] for m in test_rows], cond)
-            log(f"{kind} scored test/{cond}")
+            out[cond] = score(model, head, gpu, [m["file"] for m in test_rows], cond, size)
+            log(f"{run['name']} scored test/{cond}")
         np.savez(
-            f"/kaggle/working/scores_{kind}.npz",
+            f"/kaggle/working/scores_{run['name']}.npz",
             **out,
             label=np.array([int(m["label"]) for m in test_rows]),
             source=np.array([m["source"] for m in test_rows]),
             model=np.array([m["model"] for m in test_rows]),
         )
-        torch_save(model, head, kind)
+        save(model, head, run["name"])
 
-    threads = [threading.Thread(target=evaluate, args=(k,)) for k in results]
+    threads = [
+        threading.Thread(target=evaluate, args=(run,)) for run in RUNS if run["name"] in results
+    ]
     for th in threads:
         th.start()
     for th in threads:
@@ -200,18 +230,13 @@ def main():
     log("done")
 
 
-def torch_save(model, head, kind):
-    """Trained weights of the student (blocks, pooling, head) for later export."""
+def save(model, head, name):
+    """Trained weights only (last blocks, pooling, norm, head), fp16, for later export."""
     import torch
 
-    state = {
-        k: v.half().cpu()
-        for k, v in model.state_dict().items()
-        if k.startswith(
-            ("blocks.16", "blocks.17", "blocks.18", "blocks.19", "blocks.2", "attn_pool", "norm")
-        )
-    }
-    torch.save({"model": state, "head": head.state_dict()}, f"/kaggle/working/student_{kind}.pt")
+    names = {n for n, p in model.named_parameters() if p.requires_grad}
+    state = {k: v.half().cpu() for k, v in model.state_dict().items() if k in names}
+    torch.save({"model": state, "head": head.state_dict()}, f"/kaggle/working/student_{name}.pt")
 
 
 if __name__ == "__main__":

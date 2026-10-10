@@ -1,11 +1,14 @@
-"""Export a distilled PE-Core-L student (kaggle/distill) to ONNX for the server.
+"""Export a PE-Core-L student (kaggle/distill or kaggle/train) to ONNX for the server.
 
-Usage: python scripts/export_student.py [student_distill.pt] [scores_distill.npz]
-  (defaults: the files of the last kaggle/distill run in data/distill/)
+Usage: python scripts/export_student.py WEIGHTS.pt SCORES.npz [THRESHOLD_SET]
+  e.g. data/exp27/student_v3r.pt data/exp27/scores_v3r.npz reddit3
 The saved weights (last 8 blocks, attention pooling, norm, head; fp16) go on top of the public
 PE-Core-L14-336 weights. The ONNX graph takes (N, 3, 336, 336) images scaled to [-1, 1] and returns
-one logit per image. models/student.json records the threshold (1% FPR on the held-aside training
-reals) so that ai_score = sigmoid(logit - threshold) puts the 1%-FPR boundary at 0.5.
+one logit per image. models/student.json records the threshold at 1% FPR so that
+ai_score = sigmoid(logit - threshold) puts that boundary at 0.5. Its reals are the held-aside
+training reals ("cal_original"), or, with THRESHOLD_SET, the real images of that evaluation set
+(original files). The served model uses reddit3: images posted online, never trained on
+(experiment 27).
 Needs torch and timm (extra "train").
 """
 
@@ -17,8 +20,9 @@ import numpy as np
 import timm
 import torch
 
-WEIGHTS = Path(sys.argv[1] if len(sys.argv) > 1 else "data/distill/student_distill.pt")
-SCORES = Path(sys.argv[2] if len(sys.argv) > 2 else "data/distill/scores_distill.npz")
+WEIGHTS = Path(sys.argv[1])
+SCORES = Path(sys.argv[2])
+THRESHOLD_SET = sys.argv[3] if len(sys.argv) > 3 else None
 ARCH = "vit_pe_core_large_patch14_336.fb"
 SIZE = 336
 
@@ -59,10 +63,15 @@ def main() -> None:
         expected = model(x).numpy()
     got = ort.InferenceSession("models/student.onnx").run(None, {"images": x.numpy()})[0]
     print("max |onnx - torch|:", float(np.abs(got - expected).max()))
-    threshold = float(np.quantile(np.load(SCORES)["cal_original"], 0.99))
-    Path("models/student.json").write_text(
-        json.dumps({"arch": ARCH, "size": SIZE, "threshold": threshold}, indent=2) + "\n"
-    )
+    scores = np.load(SCORES)
+    if THRESHOLD_SET:
+        reals = scores["original"][(scores["set"] == THRESHOLD_SET) & (scores["label"] == 0)]
+    else:
+        reals = scores["cal_original"]
+    threshold = float(np.quantile(reals, 0.99))
+    config = {"arch": ARCH, "size": SIZE, "threshold": threshold, "weights": WEIGHTS.name}
+    config["threshold_reals"] = THRESHOLD_SET or "held-aside training reals"
+    Path("models/student.json").write_text(json.dumps(config, indent=2) + "\n")
     print("threshold", threshold)
 
 
