@@ -116,12 +116,14 @@ def sources(part=None):
       train_a  OpenFake core train shards (12)
       train_b  COCO val2017, WikiArt (5 shards), ImageNet-R (2 shards), CC3M train (2 shards)
       train_c  OpenFake Reddit shards 0-2 (images posted online; shards 3-4 stay in eval)
+      train_d  only the closed/commercial generators (GPT-Image, DALL-E, Imagen, Midjourney, ...)
+               from 40 OpenFake core train shards not used elsewhere
       eval     sealed test sets: OpenFake core test shards 1-2, Reddit shards 3-4, and hard reals
                (CC3M validation 0-2, WikiArt shard 70, ImageNet-R shard 4) -- none used in training
     """
     limit = 200 if SMOKE else None
 
-    def openfake(config, shard, set_name):
+    def openfake(config, shard, set_name, keep=None):
         def gen():
             n = 0
             for rows in hf_parquet(
@@ -132,6 +134,7 @@ def sources(part=None):
                 yield [
                     ((r["image"]["bytes"], r["row_id"]), int(r["label"] == "fake"), r["model"])
                     for r in rows
+                    if keep is None or keep(r)
                 ]
                 n += len(rows)
                 if limit and n >= limit:
@@ -211,8 +214,21 @@ def sources(part=None):
         openfake("reddit", "test-00004-of-00005", "reddit4"),
     ]
     train_c = [openfake("reddit", f"test-{i:05d}-of-00005", "train") for i in (0, 1, 2)]
+    closed = ("gpt-image", "dall", "imagen", "ideogram", "midjourney", "flux-1.1-pro", "flux.2")
+    closed += ("seedream", "nano-banana", "grok", "recraft", "mystic", "kling", "firefly", "sora")
+    train_d = [
+        openfake(
+            "core",
+            f"train-{i:05d}-of-00032-{j:05d}",
+            "train",
+            keep=lambda r: r["label"] == "fake" and r["model"].startswith(closed),
+        )
+        for i in range(0, 32, 4)
+        for j in (1, 2, 4, 6, 9)
+    ]
     if part:
-        parts = {"train_a": train_a, "train_b": train_b, "train_c": train_c, "eval": sealed + hard}
+        parts = dict(train_a=train_a, train_b=train_b, train_c=train_c, train_d=train_d)
+        parts["eval"] = sealed + hard
         return parts[part]
     out = list(train_a) + [("train", "coco", coco)]
     out += [

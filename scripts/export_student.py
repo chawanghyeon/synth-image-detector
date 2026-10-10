@@ -20,18 +20,15 @@ import numpy as np
 import timm
 import torch
 
-WEIGHTS = Path(sys.argv[1])
-SCORES = Path(sys.argv[2])
-THRESHOLD_SET = sys.argv[3] if len(sys.argv) > 3 else None
 ARCH = "vit_pe_core_large_patch14_336.fb"
 SIZE = 336
 
 
 class Student(torch.nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, weights: Path) -> None:
         super().__init__()
         self.backbone = timm.create_model(ARCH, pretrained=True, num_classes=0)
-        saved = torch.load(WEIGHTS, map_location="cpu")
+        saved = torch.load(weights, map_location="cpu")
         _, unexpected = self.backbone.load_state_dict(
             {k: v.float() for k, v in saved["model"].items()}, strict=False
         )
@@ -43,8 +40,22 @@ class Student(torch.nn.Module):
         return self.head(self.backbone(images)).squeeze(1)
 
 
+def threshold(scores_path: Path, threshold_set: str | None) -> float:
+    """1% FPR on the held-aside training reals, or on the real images of an evaluation set."""
+    scores = np.load(scores_path)
+    if threshold_set:
+        return float(
+            np.quantile(
+                scores["original"][(scores["set"] == threshold_set) & (scores["label"] == 0)], 0.99
+            )
+        )
+    return float(np.quantile(scores["cal_original"], 0.99))
+
+
 def main() -> None:
-    model = Student().eval()
+    weights, scores_path = Path(sys.argv[1]), Path(sys.argv[2])
+    threshold_set = sys.argv[3] if len(sys.argv) > 3 else None
+    model = Student(weights).eval()
     x = torch.rand(2, 3, SIZE, SIZE) * 2 - 1
     Path("models").mkdir(exist_ok=True)
     torch.onnx.export(
@@ -63,16 +74,11 @@ def main() -> None:
         expected = model(x).numpy()
     got = ort.InferenceSession("models/student.onnx").run(None, {"images": x.numpy()})[0]
     print("max |onnx - torch|:", float(np.abs(got - expected).max()))
-    scores = np.load(SCORES)
-    if THRESHOLD_SET:
-        reals = scores["original"][(scores["set"] == THRESHOLD_SET) & (scores["label"] == 0)]
-    else:
-        reals = scores["cal_original"]
-    threshold = float(np.quantile(reals, 0.99))
-    config = {"arch": ARCH, "size": SIZE, "threshold": threshold, "weights": WEIGHTS.name}
-    config["threshold_reals"] = THRESHOLD_SET or "held-aside training reals"
+    value = threshold(scores_path, threshold_set)
+    config = {"arch": ARCH, "size": SIZE, "threshold": value, "weights": weights.name}
+    config["threshold_reals"] = threshold_set or "held-aside training reals"
     Path("models/student.json").write_text(json.dumps(config, indent=2) + "\n")
-    print("threshold", threshold)
+    print("threshold", value)
 
 
 if __name__ == "__main__":

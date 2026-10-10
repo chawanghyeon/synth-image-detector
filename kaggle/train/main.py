@@ -8,11 +8,14 @@ Inputs (kernel sources = outputs of kaggle/data_factory, dataset synth-student-v
   synth-student-v1      the served student (experiment 23, trained on 13,000 crops)
 
 Each entry of VARIANTS trains one student on its own GPU (recipe of experiment 23 "labels": last 8
-blocks, JPEG/SNS copies, balanced batches of 32, STEPS steps) and scores the sealed sets.
-`reddit` repeats the Reddit training rows that many times (oversampling the in-the-wild data).
+blocks, JPEG/SNS copies, balanced batches of 32, STEPS steps) and scores the sealed sets. Its
+dict repeats training rows by source (0 drops that source, missing = 1), e.g. oversampling the
+in-the-wild Reddit rows.
 SCORE_SERVED scores the served student too (needs a free GPU).
 Experiment 26: VARIANTS = [("v2", 1)] without train-c, SCORE_SERVED = True.
-Experiment 27: VARIANTS = [("v3", 1), ("v3r", 3)] with train-c.
+Experiment 27: VARIANTS = [("v3", {}), ("v3r", {"openfake_reddit": 3})] with train-c.
+Experiment 28: + train-d (closed generators) and synth-codex-train (GPT-Image via Codex):
+VARIANTS = [("v4", Reddit x3, Codex x5), ("v4d", Reddit x3, no Codex)].
 20% of the training reals (by file hash) are held aside for each student's threshold.
 Outputs: scores_<model>.npz per model and student_<model>.pt.
 """
@@ -28,7 +31,10 @@ from pathlib import Path
 import numpy as np
 
 STEPS = 3000
-VARIANTS = [("v3", 1), ("v3r", 3)]  # (name, Reddit repeat), one per GPU
+VARIANTS = [  # (name, repeats by source), one per GPU
+    ("v4", {"openfake_reddit": 3, "codex": 5}),
+    ("v4d", {"openfake_reddit": 3, "codex": 0}),
+]
 SCORE_SERVED = False
 CONDS = ["original", "sns"]
 DATA = Path("/tmp/data")
@@ -116,8 +122,9 @@ def main():
     reddit = sum(r["source"] == "openfake_reddit" for r in fit)
     log(f"train {len(fit)} ({reddit} Reddit) +{len(cal)} held-aside reals, eval {len(evaluation)}")
     jobs = []  # (name, gpu, model, head, files, labels); all models load before threads start
-    for gpu, (name, repeat) in enumerate(VARIANTS):
-        rows_v = [r for r in fit for _ in range(repeat if r["source"] == "openfake_reddit" else 1)]
+    for gpu, (name, repeats) in enumerate(VARIANTS):
+        rows_v = [r for r in fit for _ in range(repeats.get(r["source"], 1))]
+        log(f"{name}: {len(rows_v)} training rows after repeats {repeats}")
         run = dict(name=name, arch=distill.PE_L, size=336, blocks=8, kind="labels")
         run.update(steps=steps, batch=32, accum=1)
         labels = np.array([int(r["label"]) for r in rows_v])
