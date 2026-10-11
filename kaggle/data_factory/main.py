@@ -1,51 +1,24 @@
-"""Kaggle CPU job: download one part of the data (see factory.sources), cut the native-resolution
-crops, and pack them into a few tar archives named *.bin in /kaggle/working (Kaggle mounts a few
-large files reliably, tens of thousands of small ones not, and unpacks *.tar itself).
+"""Kaggle CPU job: download one data part (detector.data.sources.PARTS), cut the native crops and
+pack them as crops_<part>_NN.bin + meta.csv in /kaggle/working. No GPU quota.
 
-Push each part as its own notebook (CPU only, no GPU quota):
-  python kaggle/push.py kaggle/data_factory --set PART=eval --suffix eval
-Output: meta.csv (set, source, label, model, file relative to the unpacked root) and crops_*.bin.
-Training jobs attach these notebooks as kernel sources.
+One notebook per part; training jobs attach them as kernel sources:
+  detector push kaggle/data_factory --set 'PART="train_a"' --suffix train-a
 """
 
-import csv
-import tarfile
-import time
 from pathlib import Path
 
 PART = "eval"
-OUT = Path("/kaggle/working")
-CHUNK = 3 * 2**30  # bytes of PNG per archive
-SMOKE = False
-
-
-def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+SMOKE = False  # a few hundred images per source, to check the pipeline
 
 
 def main():
-    import factory
+    from detector.data.factory import CropFactory
+    from detector.data.sources import PARTS
 
-    factory.SMOKE = SMOKE
-    meta = factory.phase_a(factory.sources(PART))
-    root = factory.TMP / "crops"
-    archive, size, index = None, 0, 0
-    for m in meta:
-        path = Path(m["file"])
-        if archive is None or size > CHUNK:
-            if archive:
-                archive.close()
-            archive, size = tarfile.open(OUT / f"crops_{PART}_{index:02d}.bin", "w"), 0
-            index += 1
-        archive.add(path, arcname=str(path.relative_to(root)))
-        size += path.stat().st_size
-        m["file"] = str(path.relative_to(root))
-    archive.close()
-    with (OUT / "meta.csv").open("w", newline="") as f:
-        writer = csv.DictWriter(f, ["set", "source", "label", "model", "file"])
-        writer.writeheader()
-        writer.writerows(meta)
-    log(f"{PART}: {len(meta)} crops in {index} archives")
+    factory = CropFactory()
+    rows = factory.build(PARTS[PART](), limit=200 if SMOKE else None)
+    archives = factory.pack(rows, Path("/kaggle/working"), PART)
+    print(f"{PART}: {len(rows)} crops in {archives} archives", flush=True)
 
 
 if __name__ == "__main__":

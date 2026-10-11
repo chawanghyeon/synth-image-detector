@@ -8,7 +8,6 @@
   "enable_gpu": true,
   "enable_internet": true,
   "dataset_sources": [
-    "chawanghyeon/synth-student-v1",
     "chawanghyeon/synth-codex-train"
   ],
   "competition_sources": [],

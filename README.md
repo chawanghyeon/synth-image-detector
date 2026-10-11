@@ -49,7 +49,7 @@ curl -F file=@photo.jpg http://127.0.0.1:8000/predict
 
 ```sh
 UV_PYTHON_INSTALL_DIR=.python uv sync --extra dev
-uv run uvicorn detector.app:app --app-dir src --port 8000
+uv run uvicorn detector.serving.app:app --app-dir src --port 8000
 ```
 
 서버가 시작하려면 `models/`에 `student.onnx`(약 1.3GB)와 `student.json`(입력 크기, 경계값)이 있어야 합니다. 모델은 Git에 넣지 않으며, 아래 "재학습"으로 만듭니다. 이미지는 한 변이 256px 이상이어야 하고, 그보다 작으면 422를 반환합니다. 업로드는 최대 20MiB입니다.
@@ -63,29 +63,56 @@ uv run uvicorn detector.app:app --app-dir src --port 8000
   - 학습 데이터 OpenFake는 CC BY-NC 4.0(비상업)입니다. 그래서 상업 서비스에는 다른 데이터로 다시 학습해야 합니다.
   - PE-Core는 Apache 2.0입니다.
 
+## 구조
+
+```
+src/detector/
+  preprocess.py      이미지 -> 모델 입력 (CropPolicy: 어느 영역을 볼지, to_array)
+  model_card.py      models/student.json (입력 크기, 경계값)
+  serving/           FastAPI 서버와 ONNX Detector (torch 없음)
+  data/              출처(Source), 원본 해상도 조각 공장(CropFactory), meta.csv, JPEG/SNS 열화
+  training/          Recipe, Student(PE-Core + 선형 헤드), Trainer, Kaggle 학습 작업, ONNX 변환
+  evaluation/        점수 파일(Scores)의 경계값과 지표, Codex 벤치마크
+  kaggle_jobs.py     Kaggle 작업 묶기·실행·대기·다운로드
+  cli.py             `detector` 명령
+kaggle/<작업>/       Kaggle 노트북 하나 = 설정(main.py) + kernel-metadata.json
+tools/               Codex 이미지 생성 스크립트와 프롬프트
+data/                (Git 제외) codex_test, codex_train, real_photos, exp28(서버 모델의 학습 결과)
+```
+
+**평가 원칙:** 경계값은 학습에 쓰지 않은 세트(Reddit 3) 실제 이미지의 오탐 1% 지점으로 먼저 고정합니다. 그 뒤 다른 세트(Reddit 4, 새 생성기, 어려운 실제 이미지, Codex)는 원본과 SNS 사본 둘 다로 잽니다.
+
 ## 재학습
 
 GPU 작업은 Kaggle(T4 2장)에서, 평가와 변환은 노트북에서 합니다. Kaggle 명령줄 도구가 로그인돼 있어야 합니다(`kaggle auth login`).
 
 ```sh
 UV_PYTHON_INSTALL_DIR=.python uv sync --all-extras
-# 1. 데이터: Kaggle CPU 작업 4개. 원본 해상도 512px 조각을 *.bin(tar)으로 묶어 노트북 출력으로 남긴다.
+# 1. 데이터: Kaggle CPU 작업. 파트마다 노트북 하나 (detector.data.sources.PARTS)
 #    train_a: OpenFake train 12 shard / train_b: COCO, WikiArt, ImageNet-R, CC3M / train_c: Reddit 0-2
 #    train_d: 쓰지 않은 OpenFake train shard 40개의 비공개 상용 생성기 AI 이미지
 #    eval: OpenFake test 1-2, Reddit 3-4, 어려운 실제 이미지 (학습에 쓰지 않음)
-#    Codex GPT-Image 학습 이미지는 Kaggle 데이터셋 synth-codex-train으로 따로 올린다.
 for part in train_a train_b train_c train_d eval; do
-  uv run python kaggle/push.py kaggle/data_factory --set "PART=\"$part\"" --suffix ${part//_/-}
+  uv run detector push kaggle/data_factory --set "PART=\"$part\"" --suffix ${part//_/-}
 done
-# 2. 학습과 봉인 세트 채점 (VARIANTS의 v4, GPU당 약 3.5시간)
-uv run python kaggle/push.py kaggle/train
-kaggle kernels output chawanghyeon/train-v2 -p data/exp28
-uv run python scripts/eval_sealed.py data/exp28
-PYTHONPATH=src:scripts uv run python scripts/eval_codex.py data/exp28 v4
-# 3. ONNX 변환. 기준선은 Reddit 3 실제 이미지 오탐 1% -> models/student.onnx, models/student.json
-uv run python scripts/export_student.py data/exp28/student_v4.pt data/exp28/scores_v4.npz reddit3
+# Codex GPT-Image 학습 이미지 -> Kaggle 데이터셋 synth-codex-train
+tools/codex_images.sh tools/prompts/codex_train.txt data/codex_train
+uv run detector pack-codex data/codex_train data/codex_train_ds
+kaggle datasets version -p data/codex_train_ds -m "Codex images"
+# 2. 학습과 봉인 세트 채점: kaggle/train/main.py의 RECIPES (GPU당 하나, 약 3.5시간)
+uv run detector push kaggle/train
+uv run detector wait chawanghyeon/train-v2 data/exp31   # 끝나면 내려받고 봉인 세트 결과 출력
+uv run detector bench data/exp31 v4                      # Codex 50장 / 실제 사진 100장
+# 3. ONNX 변환. 경계값은 Reddit 3 실제 이미지 오탐 1% -> models/student.onnx, student.json
+uv run detector export data/exp31/student_v4.pt data/exp31/scores_v4.npz
+uv run detector bench --served
 ```
 
-이전 방식(교사 PE-Core-G의 증류, 23차)은 `kaggle/siglip_features`, `scripts/make_teacher.py`, `kaggle/distill`로 다시 만들 수 있습니다.
+## 개발
 
-실험 과정과 기각한 방법은 [docs/experiments.md](docs/experiments.md)에 있습니다. 이전 프로젝트의 시도는 [docs/past_attempts.md](docs/past_attempts.md)에, 초기 조사 계획은 [docs/plan.md](docs/plan.md)에 있습니다.
+```sh
+uv run pre-commit install   # 커밋 때 ruff(lint, format), 파일 검사, pytest 실행
+uv run pytest
+```
+
+실험 과정과 기각한 방법은 [docs/experiments.md](docs/experiments.md)에 있습니다. 이전 프로젝트의 시도는 [docs/past_attempts.md](docs/past_attempts.md)에 있습니다.

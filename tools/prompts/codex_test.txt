@@ -1,0 +1,49 @@
+02_portrait|a candid smartphone photo portrait of an elderly Korean man smiling in a traditional market, natural daylight
+03_food|a top-down smartphone photo of bibimbap and side dishes on a wooden table in a small restaurant
+04_landscape|a DSLR photo of the Jeju Island coastline at sunset with volcanic rocks and waves
+05_product|a clean studio product photo of white leather sneakers on a light gray background
+06_anime|an anime-style illustration of a girl reading a book in a cozy cafe, soft colors
+07_painting|an oil painting of a small fishing harbor in the morning, visible brush strokes
+08_selfie|a casual mirror selfie of a young woman holding a phone in a bedroom, smartphone photo quality
+09_desk|a smartphone photo of a messy office desk with a laptop, coffee cup and sticky notes, slightly blurry
+10_poster|a concert poster for an indie band with bold Korean typography and a photo of a guitar
+11_cat|a smartphone photo of a tabby cat sleeping on a sunny windowsill
+12_dog|a candid photo of a golden retriever running on a beach, motion blur on the sand
+13_kids|a family snapshot of two children playing in a living room, warm indoor light
+14_wedding|a professional wedding photo of a couple under a tree, shallow depth of field
+15_concert|a crowded concert photo taken from the audience with stage lights and haze
+16_subway|a smartphone photo inside a crowded Seoul subway car during rush hour
+17_cafe_latte|a close-up photo of latte art in a ceramic cup on a marble table
+18_ramen|a top-down photo of a bowl of ramen with chopsticks, slightly overexposed phone photo
+19_mountain|a hiking photo of autumn mountains in Korea with a trail and hikers
+20_snow|a winter street photo with heavy snowfall and car headlights at dusk
+21_car|a photo of a parked silver hatchback on a narrow residential street
+22_bike|a photo of a delivery scooter parked outside a convenience store at night
+23_office|a group photo of coworkers in a meeting room looking at a whiteboard
+24_classroom|a photo of a high school classroom with students at desks, fluorescent lighting
+25_market|a photo of fruit stalls at a traditional Korean market, vivid colors
+26_kitchen|a photo of a home kitchen counter with dishes in the sink, everyday mess
+27_bedroom|a real estate photo of a small studio apartment bedroom
+28_garden|a macro photo of a bee on a purple flower with soft background
+29_sunset_city|a photo of the Seoul skyline at sunset from a rooftop
+30_rain_window|a photo through a rainy window with water droplets and blurred city lights
+31_old_man_portrait|a black and white street portrait of an old fisherman with deep wrinkles
+32_baby|a close-up photo of a sleeping newborn baby wrapped in a blanket
+33_sports|a sports photo of a soccer player kicking the ball during a match
+34_airport|a photo of an airport departure hall with travelers and flight boards
+35_receipt|a photo of a crumpled shop receipt lying on a wooden table
+36_whiteboard|a photo of a whiteboard covered with handwritten math equations
+37_bookshelf|a photo of a cluttered bookshelf with many books and small plants
+38_watercolor|a watercolor illustration of a small village by a river
+39_3d_render|a 3D render of a cute robot character on a pastel background
+40_comic|a comic book page with three panels showing a superhero in a city
+41_pixel_art|pixel art of a fantasy castle at night
+42_logo|a minimal flat logo design for a coffee shop on white background
+43_infographic|an infographic about daily water intake with icons and charts
+44_meme|a meme image of a surprised cat with bold white caption text
+45_selfie_group|a group selfie of four friends at a restaurant table
+46_drone|an aerial drone photo of rice fields and a small farmhouse
+47_night_market|a photo of a bustling night market with food stalls and steam
+48_hospital|a photo of a hospital corridor with a nurse walking
+49_construction|a photo of a construction site with cranes and workers in helmets
+50_aquarium|a photo of children looking at a large aquarium tank with fish
