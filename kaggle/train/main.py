@@ -17,6 +17,8 @@ Experiment 27: VARIANTS = [("v3", {}), ("v3r", {"openfake_reddit": 3})] with tra
 Experiment 28: + train-d (closed generators) and synth-codex-train (GPT-Image via Codex):
 VARIANTS = [("v4", Reddit x3, Codex x5), ("v4d", Reddit x3, no Codex)].
 Experiment 29: all 300 Codex images: VARIANTS = [("v5", Reddit x3, Codex x1), ("v5x", Reddit x3, Codex x3)].
+Experiment 30: v5x data with paired clean/degraded views and a consistency loss (distill "consist",
+"feat"); a third entry per variant overrides the training recipe.
 20% of the training reals (by file hash) are held aside for each student's threshold.
 Outputs: scores_<model>.npz per model and student_<model>.pt.
 """
@@ -32,9 +34,9 @@ from pathlib import Path
 import numpy as np
 
 STEPS = 3000
-VARIANTS = [  # (name, repeats by source), one per GPU
-    ("v5", {"openfake_reddit": 3, "codex": 1}),
-    ("v5x", {"openfake_reddit": 3, "codex": 3}),
+VARIANTS = [  # (name, repeats by source, recipe overrides), one per GPU
+    ("v6c", {"openfake_reddit": 3, "codex": 3}, {"kind": "consist", "lam": 1.0}),
+    ("v6f", {"openfake_reddit": 3, "codex": 3}, {"kind": "feat", "lam": 10.0}),
 ]
 SCORE_SERVED = False
 CONDS = ["original", "sns"]
@@ -123,11 +125,11 @@ def main():
     reddit = sum(r["source"] == "openfake_reddit" for r in fit)
     log(f"train {len(fit)} ({reddit} Reddit) +{len(cal)} held-aside reals, eval {len(evaluation)}")
     jobs = []  # (name, gpu, model, head, files, labels); all models load before threads start
-    for gpu, (name, repeats) in enumerate(VARIANTS):
+    for gpu, (name, repeats, recipe) in enumerate(VARIANTS):
         rows_v = [r for r in fit for _ in range(repeats.get(r["source"], 1))]
         log(f"{name}: {len(rows_v)} training rows after repeats {repeats}")
         run = dict(name=name, arch=distill.PE_L, size=336, blocks=8, kind="labels")
-        run.update(steps=steps, batch=32, accum=1)
+        run.update(steps=steps, batch=32, accum=1, **recipe)
         labels = np.array([int(r["label"]) for r in rows_v])
         jobs.append((run, gpu, *distill.build(run, gpu), [r["file"] for r in rows_v], labels))
     served = served_student(len(VARIANTS)) if SCORE_SERVED else None

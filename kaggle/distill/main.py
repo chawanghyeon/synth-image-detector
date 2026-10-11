@@ -11,6 +11,11 @@ RUNS trains one model per GPU at the same time. Targets:
                 + 0.5 * BCE(student(degraded), sigmoid(teacher(clean)))
   labels   loss = BCE(student(degraded), label)
 The model sees a degraded copy 75% of the time (random JPEG 50-95 or SNS chain), the original 25%.
+Paired kinds (experiment 30) see every image twice per step, original and degraded, half as many
+images per batch:
+  consist  loss = BCE(both views, label) + lam * BCE(student(degraded), sigmoid(student(clean)))
+           (the clean view's own prediction, without gradient, is the degraded view's target)
+  feat     loss = BCE(both views, label) + lam * (1 - cos(pooled(degraded), pooled(clean)))
 Its last `blocks` blocks ("all" = full fine-tuning), the attention pooling, the final norm and a
 linear head are trained; the frozen part runs in fp16 so that PE-Core-G fits a 16 GB T4. `accum`
 micro-batches are accumulated per optimizer step (PE-Core-G at 448 px: 8 images per micro-batch).
@@ -50,7 +55,7 @@ def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def augment(image, rng):
+def augment(image, rng, degraded=False):
     from PIL import Image
 
     def jpeg(im, q):
@@ -58,7 +63,7 @@ def augment(image, rng):
         im.save(buf, "JPEG", quality=q)
         return Image.open(buf).convert("RGB")
 
-    r = rng.random()
+    r = rng.uniform(0.25 if degraded else 0, 1)
     if r < 0.25:
         return image
     if r < 0.6:
@@ -121,8 +126,13 @@ def train(run, gpu, model, head, files, labels, teacher, results):
     pos, neg = list(np.flatnonzero(labels == 1)), list(np.flatnonzero(labels == 0))
     from concurrent.futures import ThreadPoolExecutor
 
+    paired = run["kind"] in ("consist", "feat")
+
     def load(i):
-        return to_tensor(augment(Image.open(files[i]).convert("RGB"), rng), run["size"])
+        image = Image.open(files[i]).convert("RGB")
+        if paired:
+            return to_tensor(image, run["size"]), to_tensor(augment(image, rng, True), run["size"])
+        return to_tensor(augment(image, rng), run["size"])
 
     model.train()
     begin = time.time()
@@ -130,11 +140,26 @@ def train(run, gpu, model, head, files, labels, teacher, results):
         for step in range(steps):
             opt.zero_grad(set_to_none=True)
             for _ in range(accum):
-                idx = np.r_[rng.sample(pos, half), rng.sample(neg, half)]  # balanced batch
-                x = torch.stack(list(pool.map(load, idx))).to(device)
+                n = half // 2 if paired else half
+                idx = np.r_[rng.sample(pos, n), rng.sample(neg, n)]  # balanced batch
+                views = list(pool.map(load, idx))
+                if paired:  # all clean views, then all degraded views
+                    views, idx = [v[0] for v in views] + [v[1] for v in views], np.r_[idx, idx]
+                x = torch.stack(views).to(device)
                 with torch.autocast("cuda", torch.float16):
-                    logit = head(model(x)).squeeze(1).float()
+                    feats = model(x)
+                    logit = head(feats).squeeze(1).float()
                 loss = F.binary_cross_entropy_with_logits(logit, y[idx].to(device))
+                if run["kind"] == "consist":
+                    clean, degraded = logit.chunk(2)
+                    loss = loss + run["lam"] * F.binary_cross_entropy_with_logits(
+                        degraded, torch.sigmoid(clean).detach()
+                    )
+                elif run["kind"] == "feat":
+                    clean, degraded = feats.float().chunk(2)
+                    loss = loss + run["lam"] * (
+                        1 - F.cosine_similarity(degraded, clean.detach())
+                    ).mean()
                 if run["kind"] == "distill":
                     loss = 0.5 * loss + 0.5 * F.binary_cross_entropy_with_logits(
                         logit, soft[idx].to(device)
