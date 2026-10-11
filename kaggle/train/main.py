@@ -16,6 +16,7 @@ Experiment 26: VARIANTS = [("v2", 1)] without train-c, SCORE_SERVED = True.
 Experiment 27: VARIANTS = [("v3", {}), ("v3r", {"openfake_reddit": 3})] with train-c.
 Experiment 28: + train-d (closed generators) and synth-codex-train (GPT-Image via Codex):
 VARIANTS = [("v4", Reddit x3, Codex x5), ("v4d", Reddit x3, no Codex)].
+Experiment 29: all 300 Codex images: VARIANTS = [("v5", Reddit x3, Codex x1), ("v5x", Reddit x3, Codex x3)].
 20% of the training reals (by file hash) are held aside for each student's threshold.
 Outputs: scores_<model>.npz per model and student_<model>.pt.
 """
@@ -32,8 +33,8 @@ import numpy as np
 
 STEPS = 3000
 VARIANTS = [  # (name, repeats by source), one per GPU
-    ("v4", {"openfake_reddit": 3, "codex": 5}),
-    ("v4d", {"openfake_reddit": 3, "codex": 0}),
+    ("v5", {"openfake_reddit": 3, "codex": 1}),
+    ("v5x", {"openfake_reddit": 3, "codex": 3}),
 ]
 SCORE_SERVED = False
 CONDS = ["original", "sns"]
